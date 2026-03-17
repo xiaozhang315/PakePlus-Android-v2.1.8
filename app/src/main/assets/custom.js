@@ -1,11 +1,11 @@
 window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("script");t.src="https://www.googletagmanager.com/gtag/js?id=G-W5GKHM0893",t.async=!0,document.head.appendChild(t);const n=document.createElement("script");n.textContent="window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-W5GKHM0893');",document.body.appendChild(n)});(function(){
     'use strict';
 
-    // ====================== 配置 ======================
+    // ====================== 配置（你固定的） ======================
     const START_HOUR = 10;
     const CLICK_END_MINUTE = 4;
-    const BTN_TEXT = '重新获取任务';
-    const FINISH_TEXT = '拉取完毕';
+    const BTN_TEXT = "重新获取任务";
+    const FINISH_TEXT = "拉取完毕";
 
     // ====================== 状态 ======================
     let isWaiting = false;
@@ -14,142 +14,136 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
     let refreshTriggered = false;
     let blankTimer = null;
 
-    // ====================== 本地存储账号密码 ======================
-    const AuthStorage = {
-        KEY_USER: "saved_username",
-        KEY_PWD: "saved_password",
-        save(u, p) {
-            if (u && p) {
-                localStorage.setItem(this.KEY_USER, u);
-                localStorage.setItem(this.KEY_PWD, p);
+    // ====================== 账号密码自动保存填充 ======================
+    const Auth = {
+        save(user, pwd) {
+            if(user && pwd) {
+                localStorage.setItem("my_user", user);
+                localStorage.setItem("my_pwd", pwd);
             }
         },
         load() {
             return {
-                u: localStorage.getItem(this.KEY_USER) || "",
-                p: localStorage.getItem(this.KEY_PWD) || ""
+                user: localStorage.getItem("my_user") || "",
+                pwd: localStorage.getItem("my_pwd") || ""
             };
         }
     };
 
-    // ====================== 超强自动填充（照搬你油猴的逻辑） ======================
-    function fillLoginInfo() {
-        const { u: USERNAME, p: PASSWORD } = AuthStorage.load();
-        if (!USERNAME || !PASSWORD) return;
+    function fillAllTime() {
+        const { user, pwd } = Auth.load();
+        if (!user || !pwd) return;
 
-        const userInput = document.querySelector('input[placeholder="输入用户名称"]');
-        const pwdInput = document.querySelector('input[placeholder="请输入密码"]');
+        const u = document.querySelector('input[placeholder="输入用户名称"]') || document.querySelector('input[type="text"]');
+        const p = document.querySelector('input[placeholder="请输入密码"]') || document.querySelector('input[type="password"]');
 
-        if (userInput && !userInput.value.trim()) {
-            userInput.value = USERNAME;
-            userInput.dispatchEvent(new Event('input', { bubbles: true }));
-            userInput.dispatchEvent(new Event('change', { bubbles: true }));
+        if(u) {
+            u.value = user;
+            u.dispatchEvent(new Event("input",{bubbles:true}));
+            u.dispatchEvent(new Event("change",{bubbles:true}));
         }
-
-        if (pwdInput && !pwdInput.value.trim()) {
-            pwdInput.value = PASSWORD;
-            pwdInput.dispatchEvent(new Event('input', { bubbles: true }));
-            pwdInput.dispatchEvent(new Event('change', { bubbles: true }));
+        if(p) {
+            p.value = pwd;
+            p.dispatchEvent(new Event("input",{bubbles:true}));
+            p.dispatchEvent(new Event("change",{bubbles:true}));
         }
     }
 
-    // 监听输入，自动保存
-    function watchAndSave() {
-        const userInput = document.querySelector('input[placeholder="输入用户名称"]');
-        const pwdInput = document.querySelector('input[placeholder="请输入密码"]');
-        if (!userInput || !pwdInput) return;
-
-        function save() {
-            AuthStorage.save(userInput.value.trim(), pwdInput.value.trim());
-        }
-        userInput.addEventListener('input', save);
-        pwdInput.addEventListener('input', save);
+    function saveNow() {
+        const u = document.querySelector('input[placeholder="输入用户名称"]') || document.querySelector('input[type="text"]');
+        const p = document.querySelector('input[placeholder="请输入密码"]') || document.querySelector('input[type="password"]');
+        if(u && p && u.value && p.value) Auth.save(u.value, p.value);
     }
 
-    // 持续监听页面变化，保证退出登录也能自动填（你油猴最关键的逻辑）
-    function startAutoFill() {
-        // 首次执行
-        fillLoginInfo();
-        watchAndSave();
-
-        // 监听DOM变化（退出登录、重新渲染都能触发）
-        const observer = new MutationObserver(fillLoginInfo);
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true,
-            attributes: true
-        });
-
-        // 页面显示、焦点回来都填
-        window.addEventListener('pageshow', fillLoginInfo);
-        window.addEventListener('focus', fillLoginInfo);
-
-        // 100ms兜底，绝对不失效
-        setInterval(fillLoginInfo, 100);
+    function startAutoLogin() {
+        fillAllTime();
+        saveNow();
+        setInterval(fillAllTime, 100);
+        setInterval(saveNow, 500);
+        new MutationObserver(fillAllTime).observe(document.body, { childList:true, subtree:true });
+        window.addEventListener("pageshow", fillAllTime);
+        window.addEventListener("focus", fillAllTime);
     }
 
-    // ====================== 抢任务逻辑（你原来的不变） ======================
-    function isWorkTime() {
-        return new Date().getHours() >= START_HOUR;
-    }
-
-    function is10ClickTime() {
-        const now = new Date();
-        return now.getHours() === 10 && now.getMinutes() >= 0 && now.getMinutes() <= CLICK_END_MINUTE;
-    }
-
-    function is11UpClickTime() {
-        const now = new Date();
-        return now.getHours() >= 11 && now.getMinutes() >= 0 && now.getMinutes() <= CLICK_END_MINUTE;
-    }
-
-    function isCodeError() {
-        const t = (document.body.innerText + document.title).toLowerCase();
-        const keys = ['502','503','504','500','404','网关超时','错误网关','服务不可用','服务器错误'];
-        return keys.some(k => t.includes(k));
-    }
-
-    function isBlank() {
-        const t = (document.body.innerText || '').trim().replace(/\s+/g, '');
-        return t.length === 0;
-    }
-
-    function getBtn() {
-        return Array.from(document.querySelectorAll('*')).find(el =>
-            el.textContent?.trim() === BTN_TEXT && el.offsetParent
+    // ====================== 异常判断 ======================
+    function hasError() {
+        const t = document.body.innerText || "";
+        return (
+            t.includes("响应码异常") ||
+            t.includes("502") ||
+            t.includes("503") ||
+            t.includes("504") ||
+            t.includes("500") ||
+            t.includes("404") ||
+            t.includes("网关超时") ||
+            t.includes("错误网关") ||
+            t.includes("服务不可用") ||
+            t.includes("服务器错误")
         );
     }
 
-    function runRefresh() {
-        if (!isWorkTime()) return;
+    function isBlankPage() {
+        return (document.body.innerText || "").trim().replace(/\s/g,"").length === 0;
+    }
 
-        if (isCodeError() && !refreshTriggered) {
+    function getBtn() {
+        return Array.from(document.querySelectorAll("*")).find(e => 
+            e.textContent?.trim() === BTN_TEXT && e.offsetParent
+        );
+    }
+
+    // ====================== 自动刷新（10点以后才生效！） ======================
+    function runRefresh() {
+        // 👇 这里严格按你要求：
+        // 只有 >= 10点 才检测异常并刷新
+        if (new Date().getHours() < START_HOUR) {
+            return;
+        }
+
+        // 10点后：出现任何错误 → 立刻刷新
+        if (hasError() && !refreshTriggered) {
             refreshTriggered = true;
-            location.reload(true);
+            location.reload();
             setTimeout(() => { refreshTriggered = false; }, 1000);
             return;
         }
 
-        if (isBlank() && !refreshTriggered && !blankTimer) {
+        // 10点后：白屏 → 5秒刷新
+        if (isBlankPage() && !refreshTriggered && !blankTimer) {
             refreshTriggered = true;
             blankTimer = setTimeout(() => {
-                location.reload(true);
+                location.reload();
                 refreshTriggered = false;
                 blankTimer = null;
             }, 5000);
         }
     }
 
+    // ====================== 抢任务 ======================
+    function isWorkTime() {
+        return new Date().getHours() >= START_HOUR;
+    }
+
+    function is10ClickTime() {
+        const d = new Date();
+        return d.getHours() == 10 && d.getMinutes() >= 0 && d.getMinutes() <= CLICK_END_MINUTE;
+    }
+
+    function is11UpClickTime() {
+        const d = new Date();
+        return d.getHours() >= 11 && d.getMinutes() >= 0 && d.getMinutes() <= CLICK_END_MINUTE;
+    }
+
     function runTask() {
         if (!isWorkTime()) return;
 
-        const now = new Date();
-        const m = now.getMinutes();
+        const m = new Date().getMinutes();
         if (m === 0) {
             taskStopped = false;
             firstClick = true;
         }
 
+        // 10点场：看到拉取完毕就停
         if (is10ClickTime()) {
             if (taskStopped) return;
             if (document.body.innerText.includes(FINISH_TEXT)) {
@@ -171,7 +165,7 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         }
 
         isWaiting = true;
-        const delay = Math.random() * 2000;
+        const delay = Math.random() * 1500 + 200;
         setTimeout(() => {
             try { getBtn()?.click(); } catch(e) {}
             isWaiting = false;
@@ -180,15 +174,13 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
 
     // ====================== 启动 ======================
     function start() {
-        startAutoFill();  // 这里就是你油猴那种超强自动填充
+        startAutoLogin();
         runTask();
         runRefresh();
         setInterval(() => { runTask(); runRefresh(); }, 300);
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', start);
-    } else {
-        start();
-    }
+    document.readyState === "loading"
+        ? document.addEventListener("DOMContentLoaded", start)
+        : start();
 })();
