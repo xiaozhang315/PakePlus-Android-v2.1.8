@@ -12,6 +12,52 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
     let refreshTriggered = false;
     let blankTimer = null;
 
+    // ====================== 自动填充（精准匹配你这个登录页） ======================
+    function tryFillLogin() {
+        const username = localStorage.getItem("auto_user");
+        const password = localStorage.getItem("auto_pwd");
+
+        if (!username || !password) return;
+
+        const inputUser = document.querySelector('input[placeholder="输入用户名称"]');
+        const inputPwd  = document.querySelector('input[placeholder="请输入密码"]');
+
+        if (inputUser) {
+            inputUser.value = username;
+            inputUser.dispatchEvent(new Event("input", { bubbles: true }));
+            inputUser.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        if (inputPwd) {
+            inputPwd.value = password;
+            inputPwd.dispatchEvent(new Event("input", { bubbles: true }));
+            inputPwd.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+    }
+
+    function saveLoginInfo() {
+        const u = document.querySelector('input[placeholder="输入用户名称"]');
+        const p = document.querySelector('input[placeholder="请输入密码"]');
+        if (u && p && u.value && p.value) {
+            localStorage.setItem("auto_user", u.value);
+            localStorage.setItem("auto_pwd", p.value);
+        }
+    }
+
+    setInterval(() => {
+        tryFillLogin();
+        saveLoginInfo();
+    }, 200);
+
+    const observer = new MutationObserver(() => {
+        tryFillLogin();
+        saveLoginInfo();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    window.addEventListener("pageshow", tryFillLogin);
+    window.addEventListener("focus", tryFillLogin);
+
+    // ====================== 异常判断（最强防白屏） ======================
     function hasError() {
         const t = document.body.innerText || "";
         return (
@@ -28,8 +74,15 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         );
     }
 
+    // 最强白屏判断：真正空白才触发
     function isBlankPage() {
-        return (document.body.innerText || "").trim().replace(/\s/g,"").length === 0;
+        const html = document.documentElement.outerHTML || '';
+        const hasRealContent = 
+            html.includes('<div') || 
+            html.includes('<input') || 
+            html.includes('<button') || 
+            html.includes('<a ');
+        return !hasRealContent;
     }
 
     function getBtn() {
@@ -38,6 +91,7 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         );
     }
 
+    // ====================== 自动刷新（白屏/报错立刻救） ======================
     function runRefresh() {
         const now = new Date();
         if (now.getHours() < START_HOUR) return;
@@ -45,7 +99,7 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         if (hasError() && !refreshTriggered) {
             refreshTriggered = true;
             location.reload();
-            setTimeout(() => { refreshTriggered = false; }, 1000);
+            setTimeout(() => { refreshTriggered = false; }, 1500);
             return;
         }
 
@@ -59,6 +113,7 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         }
     }
 
+    // ====================== 抢任务 ======================
     function runTask() {
         const now = new Date();
         const h = now.getHours();
@@ -105,6 +160,7 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         }
     }
 
+    // ====================== 启动 ======================
     function start() {
         runTask();
         runRefresh();
