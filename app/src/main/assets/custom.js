@@ -12,54 +12,6 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
     let refreshTriggered = false;
     let blankTimer = null;
 
-    // ====================== 自动填充（精准匹配你这个登录页） ======================
-    function tryFillLogin() {
-        const username = localStorage.getItem("auto_user");
-        const password = localStorage.getItem("auto_pwd");
-
-        if (!username || !password) return;
-
-        // 精准匹配你这个登录页
-        const inputUser = document.querySelector('input[placeholder="输入用户名称"]');
-        const inputPwd  = document.querySelector('input[placeholder="请输入密码"]');
-
-        if (inputUser) {
-            inputUser.value = username;
-            inputUser.dispatchEvent(new Event("input", { bubbles: true }));
-            inputUser.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-        if (inputPwd) {
-            inputPwd.value = password;
-            inputPwd.dispatchEvent(new Event("input", { bubbles: true }));
-            inputPwd.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-    }
-
-    function saveLoginInfo() {
-        const u = document.querySelector('input[placeholder="输入用户名称"]');
-        const p = document.querySelector('input[placeholder="请输入密码"]');
-        if (u && p && u.value && p.value) {
-            localStorage.setItem("auto_user", u.value);
-            localStorage.setItem("auto_pwd", p.value);
-        }
-    }
-
-    // 高频检测 + 页面变化必触发
-    setInterval(() => {
-        tryFillLogin();
-        saveLoginInfo();
-    }, 200);
-
-    const observer = new MutationObserver(() => {
-        tryFillLogin();
-        saveLoginInfo();
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    window.addEventListener("pageshow", tryFillLogin);
-    window.addEventListener("focus", tryFillLogin);
-
-    // ====================== 异常判断 ======================
     function hasError() {
         const t = document.body.innerText || "";
         return (
@@ -86,7 +38,6 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         );
     }
 
-    // ====================== 自动刷新（10点后生效） ======================
     function runRefresh() {
         const now = new Date();
         if (now.getHours() < START_HOUR) return;
@@ -104,11 +55,10 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
                 location.reload();
                 refreshTriggered = false;
                 blankTimer = null;
-            }, 5000);
+            }, 3000);
         }
     }
 
-    // ====================== 抢任务 ======================
     function runTask() {
         const now = new Date();
         const h = now.getHours();
@@ -141,13 +91,11 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
 
         isWaiting = true;
 
-        // 10点第一场：第一次秒点
         if (is10 && firstClick) {
             try { btn.click(); } catch(e) {}
             firstClick = false;
             isWaiting = false;
         } else {
-            // 10点后几次 + 11点后全部：0~3秒随机
             const delay = Math.random() * 3000;
             setTimeout(() => {
                 try { getBtn()?.click(); } catch(e) {}
@@ -157,7 +105,6 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         }
     }
 
-    // ====================== 启动 ======================
     function start() {
         runTask();
         runRefresh();
