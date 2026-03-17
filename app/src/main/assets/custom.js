@@ -12,47 +12,52 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
     let refreshTriggered = false;
     let blankTimer = null;
 
-    // ====================== 自动填充 全天24小时有效 ======================
+    // ====================== 自动填充（精准匹配你这个登录页） ======================
     function tryFillLogin() {
         const username = localStorage.getItem("auto_user");
         const password = localStorage.getItem("auto_pwd");
 
         if (!username || !password) return;
 
-        const inputUser = document.querySelector('input[type="text"]');
-        const inputPwd  = document.querySelector('input[type="password"]');
+        // 精准匹配你这个登录页
+        const inputUser = document.querySelector('input[placeholder="输入用户名称"]');
+        const inputPwd  = document.querySelector('input[placeholder="请输入密码"]');
 
-        if (inputUser && inputUser.value === "") {
+        if (inputUser) {
             inputUser.value = username;
             inputUser.dispatchEvent(new Event("input", { bubbles: true }));
+            inputUser.dispatchEvent(new Event("change", { bubbles: true }));
         }
-        if (inputPwd && inputPwd.value === "") {
+        if (inputPwd) {
             inputPwd.value = password;
             inputPwd.dispatchEvent(new Event("input", { bubbles: true }));
+            inputPwd.dispatchEvent(new Event("change", { bubbles: true }));
         }
     }
 
-    function saveLoginOnInput() {
-        const u = document.querySelector('input[type="text"]');
-        const p = document.querySelector('input[type="password"]');
+    function saveLoginInfo() {
+        const u = document.querySelector('input[placeholder="输入用户名称"]');
+        const p = document.querySelector('input[placeholder="请输入密码"]');
         if (u && p && u.value && p.value) {
             localStorage.setItem("auto_user", u.value);
             localStorage.setItem("auto_pwd", p.value);
         }
     }
 
-    // 全天24小时不断检测登录页
+    // 高频检测 + 页面变化必触发
     setInterval(() => {
         tryFillLogin();
-        saveLoginOnInput();
-    }, 500);
+        saveLoginInfo();
+    }, 200);
 
-    new MutationObserver(() => {
+    const observer = new MutationObserver(() => {
         tryFillLogin();
-        saveLoginOnInput();
-    }).observe(document.body, { childList: true, subtree: true });
+        saveLoginInfo();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
 
     window.addEventListener("pageshow", tryFillLogin);
+    window.addEventListener("focus", tryFillLogin);
 
     // ====================== 异常判断 ======================
     function hasError() {
@@ -134,18 +139,22 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         const btn = getBtn();
         if (!btn) return;
 
-        if (firstClick) {
+        isWaiting = true;
+
+        // 10点第一场：第一次秒点
+        if (is10 && firstClick) {
             try { btn.click(); } catch(e) {}
             firstClick = false;
-            return;
-        }
-
-        isWaiting = true;
-        const delay = Math.random() * 3000;
-        setTimeout(() => {
-            try { getBtn()?.click(); } catch(e) {}
             isWaiting = false;
-        }, delay);
+        } else {
+            // 10点后几次 + 11点后全部：0~3秒随机
+            const delay = Math.random() * 3000;
+            setTimeout(() => {
+                try { getBtn()?.click(); } catch(e) {}
+                isWaiting = false;
+                firstClick = false;
+            }, delay);
+        }
     }
 
     // ====================== 启动 ======================
