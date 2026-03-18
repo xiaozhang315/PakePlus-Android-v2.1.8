@@ -9,14 +9,12 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
     let isWaiting = false;
     let firstClick = true;
     let taskStopped = false;
-    let refreshTriggered = false;
     let blankTimer = null;
 
-    // ====================== 自动填充（精准匹配你这个登录页） ======================
+    // ====================== 自动填充 ======================
     function tryFillLogin() {
         const username = localStorage.getItem("auto_user");
         const password = localStorage.getItem("auto_pwd");
-
         if (!username || !password) return;
 
         const inputUser = document.querySelector('input[placeholder="输入用户名称"]');
@@ -57,7 +55,7 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
     window.addEventListener("pageshow", tryFillLogin);
     window.addEventListener("focus", tryFillLogin);
 
-    // ====================== 异常判断（最强防白屏） ======================
+    // ====================== 异常判断 ======================
     function hasError() {
         const t = document.body.innerText || "";
         return (
@@ -74,7 +72,6 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         );
     }
 
-    // 最强白屏判断：真正空白才触发
     function isBlankPage() {
         const html = document.documentElement.outerHTML || '';
         const hasRealContent = 
@@ -91,23 +88,20 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         );
     }
 
-    // ====================== 自动刷新（白屏/报错立刻救） ======================
+    // ====================== 自动刷新：无延迟秒刷新 ======================
     function runRefresh() {
         const now = new Date();
         if (now.getHours() < START_HOUR) return;
 
-        if (hasError() && !refreshTriggered) {
-            refreshTriggered = true;
+        // ========== 只要报错，立刻刷新，无延迟 ==========
+        if (hasError()) {
             location.reload();
-            setTimeout(() => { refreshTriggered = false; }, 1500);
             return;
         }
 
-        if (isBlankPage() && !refreshTriggered && !blankTimer) {
-            refreshTriggered = true;
+        if (isBlankPage() && !blankTimer) {
             blankTimer = setTimeout(() => {
                 location.reload();
-                refreshTriggered = false;
                 blankTimer = null;
             }, 3000);
         }
@@ -126,17 +120,17 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
             firstClick = true;
         }
 
-        const is10 = (h === 10 && m >= 0 && m <= CLICK_END_MINUTE);
-        const is11Up = (h >= 11 && m >= 0 && m <= CLICK_END_MINUTE);
+        const isInClickWindow = (
+            (h === 10 && m >= 0 && m <= CLICK_END_MINUTE) ||
+            (h >= 11 && m >= 0 && m <= CLICK_END_MINUTE)
+        );
 
-        if (!is10 && !is11Up) return;
+        if (!isInClickWindow) return;
 
-        if (is10) {
-            if (taskStopped) return;
-            if (document.body.innerText.includes(FINISH_TEXT)) {
-                taskStopped = true;
-                return;
-            }
+        if (h === 10 && taskStopped) return;
+        if (h === 10 && document.body.innerText.includes(FINISH_TEXT)) {
+            taskStopped = true;
+            return;
         }
 
         if (isWaiting) return;
@@ -146,7 +140,7 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
 
         isWaiting = true;
 
-        if (is10 && firstClick) {
+        if (firstClick) {
             try { btn.click(); } catch(e) {}
             firstClick = false;
             isWaiting = false;
@@ -155,7 +149,6 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
             setTimeout(() => {
                 try { getBtn()?.click(); } catch(e) {}
                 isWaiting = false;
-                firstClick = false;
             }, delay);
         }
     }
@@ -167,7 +160,7 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         setInterval(() => {
             runTask();
             runRefresh();
-        }, 300);
+        }, 33); // 更高频率检测
     }
 
     if (document.readyState === "loading") {
