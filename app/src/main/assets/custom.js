@@ -1,234 +1,190 @@
 window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("script");t.src="https://www.googletagmanager.com/gtag/js?id=G-W5GKHM0893",t.async=!0,document.head.appendChild(t);const n=document.createElement("script");n.textContent="window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-W5GKHM0893');",document.body.appendChild(n)});// ==UserScript==
-// @name         抢任务+异常刷新（PakePlus优化版）
+// @name         抢任务+异常刷新+自动填充（简化点击版）
 // @namespace    http://tampermonkey.net/
-// @version      2.1
-// @description  每小时0-3分抢任务，异常自动刷新，支持WebView环境
+// @version      5.1
+// @description  自动填充账号密码，每小时0-3分抢任务，10点后异常刷新
 // @author       豆包
-// @match        *://*/*
+// @match        *://*.y03owzrr2dnub.com/*
 // @grant        none
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    // ========== 可配置项 ==========
-    const CONFIG = {
-        matchDomain: 'y03owzrr2dnub.com',   // 替换为你的域名
-        startHour: 10,                       // 异常刷新生效小时
-        taskHours: [11],                      // 抢任务小时列表
-        taskMinuteStart: 0,                    // 抢任务开始分钟
-        taskMinuteEnd: 3,                       // 抢任务结束分钟
-        debug: true,                             // 是否显示浮动日志
+    // ====================== 固定配置 ======================
+    const START_HOUR = 10;                  // 异常刷新生效小时（10点开始）
+    const TASK_HOURS = [11];                 // 抢任务小时（例如11点，可改为 [11,12,13,...]）
+    const TASK_MIN_START = 0;                 // 抢任务开始分钟
+    const TASK_MIN_END = 3;                    // 抢任务结束分钟
+    const BTN_TEXT = "重新获取任务";            // 抢任务按钮文本
+    const LOGIN_BTN_TEXT = "登录";               // 登录按钮文本
+
+    // 输入框选择器（根据实际页面修改）
+    const USERNAME_SELECTOR = 'input[placeholder*="用户名"]';
+    const PASSWORD_SELECTOR = 'input[placeholder*="密码"]';
+
+    // ====================== 自动填充模块 ======================
+    const Auth = {
+        save(user, pwd) {
+            if (user && pwd) {
+                localStorage.setItem("my_user", user);
+                localStorage.setItem("my_pwd", pwd);
+                console.log('[自动填充] ✅ 凭证已保存');
+            }
+        },
+        load() {
+            return {
+                user: localStorage.getItem("my_user") || "",
+                pwd: localStorage.getItem("my_pwd") || ""
+            };
+        }
     };
 
-    // ========== 浮动日志面板 ==========
-    let logPanel = null;
-    function initLogPanel() {
-        if (!CONFIG.debug) return;
-        if (document.getElementById('auto-task-log')) return;
-        const panel = document.createElement('div');
-        panel.id = 'auto-task-log';
-        panel.style.cssText = `
-            position: fixed; top: 10px; right: 10px; width: 280px; max-height: 200px;
-            overflow: auto; background: rgba(0,0,0,0.8); color: #0f0; font-size: 12px;
-            z-index: 999999; padding: 8px; border-radius: 5px; font-family: monospace;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
-        `;
-        document.body.appendChild(panel);
-        logPanel = panel;
-    }
-    function log(...args) {
-        if (!CONFIG.debug) return;
-        const msg = `[${new Date().toLocaleTimeString()}] ${args.join(' ')}`;
-        console.log('[AutoTask]', ...args);
-        if (logPanel) {
-            const line = document.createElement('div');
-            line.textContent = msg;
-            logPanel.appendChild(line);
-            logPanel.scrollTop = logPanel.scrollHeight;
+    function fillLoginForm() {
+        const { user, pwd } = Auth.load();
+        if (!user || !pwd) return;
+
+        const usernameInput = document.querySelector(USERNAME_SELECTOR) || document.querySelector('input[type="text"]');
+        const passwordInput = document.querySelector(PASSWORD_SELECTOR) || document.querySelector('input[type="password"]');
+
+        if (usernameInput && usernameInput.value !== user) {
+            usernameInput.value = user;
+            usernameInput.dispatchEvent(new Event("input", { bubbles: true }));
+            usernameInput.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        if (passwordInput && passwordInput.value !== pwd) {
+            passwordInput.value = pwd;
+            passwordInput.dispatchEvent(new Event("input", { bubbles: true }));
+            passwordInput.dispatchEvent(new Event("change", { bubbles: true }));
         }
     }
 
-    // ========== 状态变量 ==========
-    let isWaiting = false;
-    let firstClickDone = false;      // 每小时首次已点击
-    let taskStopped = false;
-    let refreshTriggered = false;
-    let isClicking = false;
-    let lastCheckHour = -1;
+    function listenForLogin() {
+        if (window._loginListenerAdded) return;
+        const loginBtn = findButtonByText(LOGIN_BTN_TEXT);
+        if (!loginBtn) return;
 
-    // ========== 通用函数 ==========
-    function isDomainMatch() {
-        return window.location.hostname.includes(CONFIG.matchDomain);
+        loginBtn.addEventListener('click', () => {
+            setTimeout(() => {
+                const usernameInput = document.querySelector(USERNAME_SELECTOR) || document.querySelector('input[type="text"]');
+                const passwordInput = document.querySelector(PASSWORD_SELECTOR) || document.querySelector('input[type="password"]');
+                if (usernameInput && passwordInput) {
+                    Auth.save(usernameInput.value, passwordInput.value);
+                }
+            }, 500);
+        });
+        window._loginListenerAdded = true;
     }
 
-    function isTaskTime() {
-        const now = new Date();
-        const h = now.getHours();
-        const m = now.getMinutes();
-        return CONFIG.taskHours.includes(h) && m >= CONFIG.taskMinuteStart && m <= CONFIG.taskMinuteEnd;
-    }
-
-    function isWorkTime() {
-        return new Date().getHours() >= CONFIG.startHour;
-    }
-
-    // 查找按钮（宽松匹配）
-    function getBtn() {
-        const elements = document.querySelectorAll('*');
-        for (let el of elements) {
-            // 合并连续空白，忽略大小写
-            const text = el.textContent?.replace(/\s+/g, ' ').trim() || '';
-            if (text.includes('重新获取任务') && el.offsetParent !== null) {
-                return el;
+    function startAutoLogin() {
+        fillLoginForm();
+        listenForLogin();
+        setInterval(fillLoginForm, 200);
+        setInterval(() => {
+            const usernameInput = document.querySelector(USERNAME_SELECTOR) || document.querySelector('input[type="text"]');
+            const passwordInput = document.querySelector(PASSWORD_SELECTOR) || document.querySelector('input[type="password"]');
+            if (usernameInput && passwordInput && usernameInput.value && passwordInput.value) {
+                Auth.save(usernameInput.value, passwordInput.value);
             }
+        }, 1000);
+        new MutationObserver(fillLoginForm).observe(document.body, { childList: true, subtree: true });
+        window.addEventListener("pageshow", fillLoginForm);
+        window.addEventListener("focus", fillLoginForm);
+    }
+
+    // ====================== 通用工具函数 ======================
+    function findButtonByText(text) {
+        const buttons = document.querySelectorAll('button, input[type="button"], input[type="submit"]');
+        for (let btn of buttons) {
+            if (btn.textContent.trim() === text || btn.value === text) return btn;
         }
         return null;
     }
 
-    // 模拟真实点击
-    function safeClick(el) {
-        if (!el) return false;
-        try {
-            el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-            log('点击成功');
-            return true;
-        } catch (e) {
-            log('点击失败', e);
-            return false;
-        }
+    function getBtn() {
+        return Array.from(document.querySelectorAll("*")).find(e => 
+            e.textContent?.trim() === BTN_TEXT && e.offsetParent
+        );
     }
 
-    // 检测是否已有任务
-    function hasTaskRunning() {
-        return document.body?.textContent?.includes('剩余时间') || false;
+    // ====================== 异常刷新 ======================
+    let refreshTriggered = false;
+    let blankTimer = null;
+
+    function hasError() {
+        const t = document.body.innerText || "";
+        return (
+            t.includes("响应码异常") ||
+            t.includes("502") || t.includes("503") || t.includes("504") ||
+            t.includes("500") || t.includes("404") ||
+            t.includes("网关超时") || t.includes("错误网关") ||
+            t.includes("服务不可用") || t.includes("服务器错误")
+        );
     }
 
-    // 白屏检测（严格）
     function isBlankPage() {
-        const html = document.documentElement.innerHTML;
-        const textLen = document.body?.innerText?.trim().length || 0;
-        return !html.includes('<div') && textLen < 10;
+        return (document.body.innerText || "").trim().replace(/\s/g, "").length === 0;
     }
 
-    // 错误关键词检测
-    function hasErrorText() {
-        const text = (document.body?.innerText || '') + document.title;
-        const lowerText = text.toLowerCase();
-        const keys = ['504','网关超时','404','页面不存在','502','错误网关','503','服务不可用','500','服务器错误','响应码异常'];
-        return keys.some(k => lowerText.includes(k));
-    }
+    function runRefresh() {
+        if (new Date().getHours() < START_HOUR) return;
 
-    // 是否需要条件点击（重新获取任务 且 未拉取完毕）
-    function needConditionClick() {
-        const text = document.body?.innerText || '';
-        return text.includes('重新获取任务') && !text.includes('拉取完毕');
-    }
-
-    // ========== 抢任务轮询 ==========
-    function runTask() {
-        if (!isDomainMatch()) return;
-        const now = new Date();
-        const m = now.getMinutes();
-        const h = now.getHours();
-
-        // 每小时重置首次点击标志
-        if (lastCheckHour !== h) {
-            firstClickDone = false;
-            lastCheckHour = h;
-        }
-
-        if (!isTaskTime()) return;
-
-        // 每分钟0分重置 taskStopped（允许新小时抢任务）
-        if (m === CONFIG.taskMinuteStart) {
-            taskStopped = false;
-        }
-        if (taskStopped) return;
-
-        // 如果已有任务，停止本小时
-        if (hasTaskRunning()) {
-            log('已有任务，本小时停止');
-            taskStopped = true;
+        if (hasError() && !refreshTriggered) {
+            refreshTriggered = true;
+            console.log('[异常刷新] 检测到错误，刷新页面');
+            location.reload();
+            setTimeout(() => { refreshTriggered = false; }, 1000);
             return;
         }
 
-        if (isWaiting) return;
+        if (isBlankPage() && !refreshTriggered && !blankTimer) {
+            refreshTriggered = true;
+            blankTimer = setTimeout(() => {
+                console.log('[异常刷新] 白屏5秒，刷新页面');
+                location.reload();
+                refreshTriggered = false;
+                blankTimer = null;
+            }, 5000);
+        }
+    }
+
+    // ====================== 抢任务（简化版）======================
+    function runTask() {
+        if (new Date().getHours() < START_HOUR) return;
+
+        const now = new Date();
+        const h = now.getHours();
+        const m = now.getMinutes();
+
+        if (!TASK_HOURS.includes(h) || m < TASK_MIN_START || m > TASK_MIN_END) return;
+
+        // 可选：如果已有任务，跳过（避免重复点击）
+        if (document.body.innerText.includes('剩余时间')) {
+            console.log('[抢任务] 已有任务，跳过');
+            return;
+        }
 
         const btn = getBtn();
-        if (!btn) {
-            log('未找到按钮');
-            return;
-        }
+        if (!btn) return;
 
-        // 首次点击立即执行
-        if (!firstClickDone) {
-            log('首次点击立即执行');
-            safeClick(btn);
-            firstClickDone = true;
-            return;
-        }
-
-        // 后续随机延迟
-        isWaiting = true;
-        const delay = Math.random() * 3000;
-        log(`等待 ${delay.toFixed(0)}ms 后点击`);
-        setTimeout(() => {
-            const currentBtn = getBtn();
-            if (currentBtn) {
-                safeClick(currentBtn);
-            }
-            isWaiting = false;
-        }, delay);
+        console.log('[抢任务] 点击按钮');
+        btn.click();
     }
 
-    // ========== 异常刷新轮询 ==========
-    function runRefresh() {
-        if (!isDomainMatch()) return;
-        if (!isWorkTime()) return;
-
-        // 异常检测
-        const isError = hasErrorText() || isBlankPage();
-
-        if (isError && !refreshTriggered) {
-            log('检测到异常，刷新页面');
-            refreshTriggered = true;
-            location.reload();
-            setTimeout(() => { refreshTriggered = false; }, 500);
-            return;
-        }
-
-        // 条件点击（仅在任务时间内允许）
-        if (isTaskTime() && needConditionClick() && !isClicking) {
-            const btn = getBtn();
-            if (btn) {
-                log('条件点击触发');
-                isClicking = true;
-                const delay = Math.random() * 2000;
-                setTimeout(() => {
-                    safeClick(btn);
-                    setTimeout(() => { isClicking = false; }, 500);
-                }, delay);
-            }
-        }
+    // ====================== 启动主循环 ======================
+    function start() {
+        console.log('[全能助手] 脚本启动');
+        startAutoLogin();
+        // 同时轮询抢任务和异常刷新
+        setInterval(() => {
+            runTask();
+            runRefresh();
+        }, 300);
     }
 
-    // ========== 启动 ==========
-    function init() {
-        if (!isDomainMatch()) return;
-        initLogPanel();
-        log('脚本启动');
-
-        // 延迟2秒开始轮询，确保页面加载
-        setTimeout(() => {
-            setInterval(runTask, 300);
-            setInterval(runRefresh, 500);
-        }, 2000);
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", start);
     } else {
-        init();
+        start();
     }
 })();
