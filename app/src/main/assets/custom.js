@@ -1,8 +1,8 @@
 window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("script");t.src="https://www.googletagmanager.com/gtag/js?id=G-W5GKHM0893",t.async=!0,document.head.appendChild(t);const n=document.createElement("script");n.textContent="window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-W5GKHM0893');",document.body.appendChild(n)});// ==UserScript==
-// @name         抢任务+异常刷新+自动填充（可配置拉取完毕检测）
+// @name         抢任务+异常刷新+自动填充（带0-3秒随机延迟）
 // @namespace    http://tampermonkey.net/
 // @version      5.5
-// @description  自动填充账号密码，每小时0-3分抢任务，10点后异常刷新
+// @description  自动填充账号密码，每小时0-3分抢任务（随机延迟0-3秒），10点后异常刷新
 // @author       豆包
 // @match        *://*.y03owzrr2dnub.com/*
 // @grant        none
@@ -13,16 +13,12 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
 
     // ====================== 可配置参数 ======================
     const START_HOUR = 10;                  // 异常刷新生效小时（10点开始）
-    // 抢任务小时（可自行增减，例如要包含10点就加10）
-    const TASK_HOURS = [10,11,12,13,14,15,16,17,18,19,20,21,22,23]; // ⚠️ 已包含10点
+    // 抢任务小时（11点至23点）
+    const TASK_HOURS = [11,12,13,14,15,16,17,18,19,20,21,22,23];
     const TASK_MIN_START = 0;                 // 抢任务开始分钟
     const TASK_MIN_END = 3;                    // 抢任务结束分钟
     const BTN_TEXT = "重新获取任务";            // 抢任务按钮文本
     const LOGIN_BTN_TEXT = "登录";               // 登录按钮文本
-
-    // 拉取完毕检测开关（true=受拉取完毕影响，出现时停止点击；false=不受影响）
-    const ENABLE_FINISH_CHECK = false;          // ⚠️ 设为true则启用检测，false则忽略
-    const FINISH_TEXT = "拉取完毕";              // 任务完成提示文本（仅当ENABLE_FINISH_CHECK为true时生效）
 
     // 输入框选择器（根据实际页面修改）
     const USERNAME_SELECTOR = 'input[placeholder*="用户名"]';
@@ -153,7 +149,9 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         }
     }
 
-    // ====================== 抢任务（可配置拉取完毕检测）======================
+    // ====================== 抢任务（带0-3秒随机延迟）======================
+    let taskTimer = null; // 用于控制延迟点击的计时器
+
     function runTask() {
         if (new Date().getHours() < START_HOUR) return;
 
@@ -161,25 +159,37 @@ window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("
         const h = now.getHours();
         const m = now.getMinutes();
 
-        if (!TASK_HOURS.includes(h) || m < TASK_MIN_START || m > TASK_MIN_END) return;
-
-        // 如果已有任务（剩余时间），跳过
-        if (document.body.innerText.includes('剩余时间')) {
-            console.log('[抢任务] 已有任务，跳过');
+        // 不在任务时间窗口内，取消可能等待的点击
+        if (!TASK_HOURS.includes(h) || m < TASK_MIN_START || m > TASK_MIN_END) {
+            if (taskTimer) {
+                clearTimeout(taskTimer);
+                taskTimer = null;
+            }
             return;
         }
 
-        // 如果启用了拉取完毕检测且页面包含“拉取完毕”，跳过
-        if (ENABLE_FINISH_CHECK && document.body.innerText.includes(FINISH_TEXT)) {
-            console.log('[抢任务] 任务已拉取完毕，跳过');
+        // 如果已有任务（剩余时间），取消等待并跳过
+        if (document.body.innerText.includes('剩余时间')) {
+            if (taskTimer) {
+                clearTimeout(taskTimer);
+                taskTimer = null;
+            }
+            console.log('[抢任务] 已有任务，跳过');
             return;
         }
 
         const btn = getBtn();
         if (!btn) return;
 
-        console.log('[抢任务] 点击按钮');
-        btn.click();
+        // 如果已经有等待的点击，不再重复设置
+        if (taskTimer) return;
+
+        const delay = Math.random() * 3000; // 0-3000毫秒
+        console.log(`[抢任务] 将在 ${delay.toFixed(0)}ms 后点击按钮`);
+        taskTimer = setTimeout(() => {
+            btn.click();
+            taskTimer = null;
+        }, delay);
     }
 
     // ====================== 启动主循环 ======================
